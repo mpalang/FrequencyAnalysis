@@ -11,6 +11,7 @@ from pathlib import Path
 from scipy import fft
 
 
+
 class FrequencyAnalysis:
     def __init__(self):
         self.load_data()
@@ -29,14 +30,10 @@ class FrequencyAnalysis:
         self.wl = np.genfromtxt(Path(Path(__file__).parent,'test_data_wl.csv'),delimiter=',')
         self.t = np.genfromtxt(Path(Path(__file__).parent,'test_data_t.csv'),delimiter=',')
         
+        
         self.N = 5000
         self.t_int=np.linspace(min(self.t),max(self.t),self.N)
       
-
-    
- 
-
-
 # =============================================================================
 # Execute:
 # =============================================================================
@@ -46,9 +43,10 @@ FA = FrequencyAnalysis()
 
 #%% Diff Test
 
-t = FA.t
+cut_early = 19
+t = FA.t[cut_early:]
 t_int = np.linspace(min(t),max(t),5000)
-y = FA.exp_data[1000,:]
+y = FA.exp_data[1000,cut_early:]
 y_int = np.interp(t_int,t,y)
 
 y_diff = np.diff(y_int)   
@@ -57,9 +55,6 @@ fig,ax=plt.subplots(2,1)
 ax[0].plot(t,y)
 ax[0].plot(t_int,y_int)
 ax[1].plot(t_int[:-1],y_diff)
-
-
-
 
 
 def get_Extrema():
@@ -78,40 +73,61 @@ def get_Extrema():
     Maxima = t_int[indices_Maxima]
     
     def pick(extrema):
+        threshhold = 0.6
         selected = []
         for i in range(1, len(extrema)-1):
             prev_el = extrema[i-1]
             el = extrema[i]
             next_el = extrema[i+1]
             
-            if 1.2 > abs(el - prev_el)/abs(el - next_el) > 0.8:
+            if 1+threshhold > abs(el - prev_el)/abs(el - next_el) > 1-threshhold:
                 selected.append(el)
             
         return np.asarray(selected)
     
-    Minima = pick(Minima)
-    Maxima = pick(Maxima)
+    # Minima = pick(Minima)
+    # Maxima = pick(Maxima)
+    
+    Extrema = np.sort(np.concat((Maxima,Minima)))
+    
+    def get_gauss(extrema):
+        fig,ax = plt.subplots()
+        
+        grad = np.diff(extrema)     
+        from scipy.stats import gaussian_kde
+        
+        kde = gaussian_kde(grad)
+        
+        T = np.linspace(min(grad),max(grad),1000)
+        ax.plot(T,kde(T))
+        ax.plot(grad,[0.08]*len(grad),'x')
+        print(2*T[np.argmax(kde(T))])
+
+    get_gauss(Extrema)   
     
     return Minima, Maxima
 
 
 Minima,Maxima = get_Extrema()  
     
-ax[1].plot(Maxima,np.array([0.003]*len(Maxima)),'x')
-ax[1].plot(Minima,np.array([-0.003]*len(Minima)),'x')
+ax[1].plot(Maxima,np.array([0]*len(Maxima)),'x')
+ax[1].plot(Minima,np.array([0]*len(Minima)),'x')
 
-ax[1].plot(t_int, 0.001*np.sin(2*np.pi*(t_int+6)/11.4))
+# ax[1].plot(t_int, 0.001*np.sin(2*np.pi*(t_int+6)/11.4))
 
 ax[1].set_ylim([-0.005,0.005])
 ax[1].axhline(color='k')
 
 #%%
 
+Extrema = np.sort(np.concat((Maxima,Minima)))
 Tn = np.median(np.diff(Minima[:]))
 Tp = np.median(np.diff(Maxima[:]))
+T = np.median(np.diff(Extrema))
 
-print(Tn)
-print(Tp)
+# print(Tn)
+# print(Tp)
+# print(2*T)
 
 
 
