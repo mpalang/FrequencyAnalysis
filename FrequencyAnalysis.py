@@ -8,7 +8,10 @@ Created on Wed Nov 26 14:47:32 2025
 import numpy as np
 from matplotlib import pyplot as plt
 from pathlib import Path
-from scipy import fft
+# from scipy import fft        
+from scipy.stats import gaussian_kde
+from scipy.optimize import curve_fit, minimize
+
 
 
 
@@ -43,91 +46,121 @@ FA = FrequencyAnalysis()
 
 #%% Diff Test
 
-cut_early = 19
+cut_early = 0
 t = FA.t[cut_early:]
-t_int = np.linspace(min(t),max(t),5000)
-y = FA.exp_data[1000,cut_early:]
-y_int = np.interp(t_int,t,y)
+# t_int = np.linspace(min(t),max(t),5000)
+ta = FA.exp_data[1200,cut_early:]
+# y_int = np.interp(t_int,t,y)
 
-y_diff = np.diff(y_int)   
+def get_Extrema(x,y):
+    
+    dy_dx = np.gradient(y,x)     
+        
+    def get_zero_crossing(indices,x,y):
+        """
+        gets zero crossing between point x[indices] and the next point in x.
 
-fig,ax=plt.subplots(2,1)
-ax[0].plot(t,y)
-ax[0].plot(t_int,y_int)
-ax[1].plot(t_int[:-1],y_diff)
+        """
+        sc = []
+        for i in indices:
+            x1 = x[i]
+            x2 = x[i+1]
+            y1 = y[i]
+            y2 = y[i+1]
+            a = (y1-y2)/(x1-x2)
+            b = y1 - a*x1
+            x0 = -b/a
+            sc.append(x0)
+        return np.asarray(sc)
 
-
-def get_Extrema():
     
     # Find zero slope (maxima & minima)
-    condition_Maxima = (y_diff[:-1] > 0) & (y_diff[1:] < 0)
+    condition_Maxima = (dy_dx[:-1] > 0) & (dy_dx[1:] < 0)
     # Get indices where the condition is True
     indices_Maxima = np.where(condition_Maxima)[0]
+    Maxima = get_zero_crossing(indices_Maxima,x,dy_dx)
     
-    condition_Minima = (y_diff[:-1] < 0) & (y_diff[1:] > 0)
-    
+    condition_Minima = (dy_dx[:-1] < 0) & (dy_dx[1:] > 0)
     # Get indices where the condition is True
     indices_Minima = np.where(condition_Minima)[0]
-    
-    Minima = t_int[indices_Minima]
-    Maxima = t_int[indices_Maxima]
-    
-    def pick(extrema):
-        threshhold = 0.6
-        selected = []
-        for i in range(1, len(extrema)-1):
-            prev_el = extrema[i-1]
-            el = extrema[i]
-            next_el = extrema[i+1]
-            
-            if 1+threshhold > abs(el - prev_el)/abs(el - next_el) > 1-threshhold:
-                selected.append(el)
-            
-        return np.asarray(selected)
-    
-    # Minima = pick(Minima)
-    # Maxima = pick(Maxima)
+    Minima = get_zero_crossing(indices_Minima,x,dy_dx)
     
     Extrema = np.sort(np.concat((Maxima,Minima)))
     
-    def get_gauss(extrema):
-        fig,ax = plt.subplots()
+    # fig,ax=plt.subplots(2,1)
+    # ax[0].plot(t,ta)
+    # # ax[0].plot(t_int,y_int)
+    # ax[1].plot(t,dy_dx)  
+    # ax[1].plot(Maxima,np.array([0]*len(Maxima)),'x')
+    # ax[1].plot(Minima,np.array([0]*len(Minima)),'x')
+    # # ax[1].plot(Extrema,np.array([0]*len(Extrema)),'x')
+
+    # # ax[1].plot(t_int, 0.001*np.sin(2*np.pi*(t_int+6)/11.4))
+
+    # # ax[0].set_xlim([45,65])
+    # ax[1].set_ylim([-0.07,0.07])
+    # # ax[1].set_xlim([45,65])
+    # ax[1].axhline(color='k')
         
+    def get_period(extrema):
         grad = np.diff(extrema)     
-        from scipy.stats import gaussian_kde
+
         
         kde = gaussian_kde(grad)
         
         T = np.linspace(min(grad),max(grad),1000)
-        ax.plot(T,kde(T))
-        ax.plot(grad,[0.08]*len(grad),'x')
-        print(2*T[np.argmax(kde(T))])
-
-    get_gauss(Extrema)   
+        
+        # fig,ax = plt.subplots()
+        # ax.plot(T,kde(T))
+        # ax.plot(grad,[0.08]*len(grad),'x')
+        
+        # print(f'Estimated Period: {2*T[np.argmax(kde(T))]}')
+        return 2*T[np.argmax(kde(T))] 
     
-    return Minima, Maxima
-
-
-Minima,Maxima = get_Extrema()  
+    period = get_period(Extrema) 
     
-ax[1].plot(Maxima,np.array([0]*len(Maxima)),'x')
-ax[1].plot(Minima,np.array([0]*len(Minima)),'x')
+    def get_Phase(Maxima,period):
+        
+        def objective(phi):
+            mod = Maxima%period
+            for n,i in enumerate(mod):
+                i = i - period/4
+                if i>0.5*period:
+                    mod[n] = period - i
+                else:
+                    mod[n] = i
+            
+            return mod
+            
+        mod = objective(0)
+        
+        kde = gaussian_kde(mod)
+        x = np.linspace(min(mod),max(mod),1000)
+        
+        fig,ax = plt.subplots()
+        ax.scatter(mod,[0]*len(Maxima))
+        ax.plot(x,kde(x))
+        
+        return max(2*np.pi*kde(x)/period)
+        
+    phase = get_Phase(Maxima,period)
+    
+    return period, phase
 
-# ax[1].plot(t_int, 0.001*np.sin(2*np.pi*(t_int+6)/11.4))
 
-ax[1].set_ylim([-0.005,0.005])
-ax[1].axhline(color='k')
+period,phase = get_Extrema(t,ta)
 
-#%%
 
-Extrema = np.sort(np.concat((Maxima,Minima)))
-Tn = np.median(np.diff(Minima[:]))
-Tp = np.median(np.diff(Maxima[:]))
-T = np.median(np.diff(Extrema))
+#%
+fig,ax = plt.subplots()
+ax.axhline(0,color='k')
+ax.plot(t,np.gradient(ta,t))
 
-# print(Tn)
-# print(Tp)
-# print(2*T)
+t_int = np.linspace(min(t),max(t),2000)
+ax.plot(t_int,0.02* np.sin(2*np.pi*t_int/period+phase))
+
+ax.set_ylim((-0.1,0.1))
+
 
 
 
