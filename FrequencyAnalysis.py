@@ -13,6 +13,20 @@ from scipy.stats import gaussian_kde
 from scipy.optimize import curve_fit, minimize
 
 
+#TODO: See what part of the function takes the longest
+#TODO: Fix Phase sign issue (0.5pi instead of 1.5 e.g.)
+#TODO: Optimize robustness (lots of nonsensical results still). Maybe discard datapoints that don't make sense? Find criterium to discard datapoints?
+ 
+import time
+
+start = time.perf_counter()
+end = time.perf_counter()
+
+print(f"Elapsed time: {end - start:.2f} seconds")
+
+
+
+
 
 
 class FrequencyAnalysis:
@@ -44,13 +58,15 @@ class FrequencyAnalysis:
 FA = FrequencyAnalysis()
 
 
-#%% Diff Test
+#% Diff Test
 
-cut_early = 0
-t = FA.t[cut_early:]
-# t_int = np.linspace(min(t),max(t),5000)
-ta = FA.exp_data[1200,cut_early:]
-# y_int = np.interp(t_int,t,y)
+
+# Period = 10
+# Phase_Shift = 0.5*np.pi
+
+
+# t = np.linspace(min(t),max(t),5000)
+# ta = 0.2*np.sin((2*np.pi*t/Period)-Phase_Shift)
 
 def get_Extrema(x,y):
     
@@ -137,29 +153,47 @@ def get_Extrema(x,y):
         kde = gaussian_kde(mod)
         x = np.linspace(min(mod),max(mod),1000)
         
-        fig,ax = plt.subplots()
-        ax.scatter(mod,[0]*len(Maxima))
-        ax.plot(x,kde(x))
+        # fig,ax = plt.subplots()
+        # ax.scatter(mod,[0]*len(Maxima))
+        # ax.plot(x,kde(x))
         
-        return max(2*np.pi*kde(x)/period)
+        phase_shift = 2*np.pi*x[np.argmax(kde(x))]/period
+        
+        # print(f'''
+# Estimates for
+# Period: {round(period,2)}
+# Phase Shift: {round(phase_shift/np.pi,2)} \u03C0
+#               ''')
+        
+        return phase_shift 
         
     phase = get_Phase(Maxima,period)
     
     return period, phase
 
 
-period,phase = get_Extrema(t,ta)
+cut_early = 0
+t = FA.t[cut_early:]
+wl = FA.wl
+TA = FA.exp_data[:,cut_early:]
 
 
-#%
-fig,ax = plt.subplots()
-ax.axhline(0,color='k')
-ax.plot(t,np.gradient(ta,t))
+Period = np.zeros(TA.shape[0])
+Phase = np.zeros(TA.shape[0])
+for n,i in enumerate(wl):
+    Period[n],Phase[n] = get_Extrema(t,TA[n,:])
+    
 
-t_int = np.linspace(min(t),max(t),2000)
-ax.plot(t_int,0.02* np.sin(2*np.pi*t_int/period+phase))
 
-ax.set_ylim((-0.1,0.1))
+
+
+
+fig,ax = plt.subplots(2,1)
+ax[0].axhline(0,color='k')
+ax[0].plot(wl,2*np.pi/Period)
+ax[1].plot(wl,Phase)
+
+ax[0].set_ylim((0,2))
 
 
 
