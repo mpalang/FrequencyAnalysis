@@ -68,62 +68,62 @@ FA = FrequencyAnalysis()
 # t = np.linspace(min(t),max(t),5000)
 # ta = 0.2*np.sin((2*np.pi*t/Period)-Phase_Shift)
 
-def get_Extrema(x,y):
-    
-    dy_dx = np.gradient(y,x)     
-        
-    def get_zero_crossing(indices,x,y):
-        """
-        gets zero crossing between point x[indices] and the next point in x.
+def Oscillation_Estimate(x,y):
 
+    def get_extrema(x,y):
         """
-        sc = []
-        for i in indices:
+        """    
+        dy_dx = np.gradient(y,x) 
+        
+        condition_Maxima = (dy_dx[:-1] > 0) & (dy_dx[1:] < 0)
+        # Get indices where the condition is True
+        indices_Maxima = np.where(condition_Maxima)[0]
+        Maxima = []
+        for i in indices_Maxima:
             x1 = x[i]
             x2 = x[i+1]
-            y1 = y[i]
-            y2 = y[i+1]
+            y1 = dy_dx[i]
+            y2 = dy_dx[i+1]
             a = (y1-y2)/(x1-x2)
             b = y1 - a*x1
             x0 = -b/a
-            sc.append(x0)
-        return np.asarray(sc)
-
-    
-    # Find zero slope (maxima & minima)
-    condition_Maxima = (dy_dx[:-1] > 0) & (dy_dx[1:] < 0)
-    # Get indices where the condition is True
-    indices_Maxima = np.where(condition_Maxima)[0]
-    Maxima = get_zero_crossing(indices_Maxima,x,dy_dx)
-    
-    condition_Minima = (dy_dx[:-1] < 0) & (dy_dx[1:] > 0)
-    # Get indices where the condition is True
-    indices_Minima = np.where(condition_Minima)[0]
-    Minima = get_zero_crossing(indices_Minima,x,dy_dx)
-    
-    Extrema = np.sort(np.concat((Maxima,Minima)))
-    
-    # fig,ax=plt.subplots(2,1)
-    # ax[0].plot(t,ta)
-    # # ax[0].plot(t_int,y_int)
-    # ax[1].plot(t,dy_dx)  
-    # ax[1].plot(Maxima,np.array([0]*len(Maxima)),'x')
-    # ax[1].plot(Minima,np.array([0]*len(Minima)),'x')
-    # # ax[1].plot(Extrema,np.array([0]*len(Extrema)),'x')
-
-    # # ax[1].plot(t_int, 0.001*np.sin(2*np.pi*(t_int+6)/11.4))
-
-    # # ax[0].set_xlim([45,65])
-    # ax[1].set_ylim([-0.07,0.07])
-    # # ax[1].set_xlim([45,65])
-    # ax[1].axhline(color='k')
+            Maxima.append(x0)
+      
+        condition_Minima = (dy_dx[:-1] < 0) & (dy_dx[1:] > 0)
+        # Get indices where the condition is True
+        indices_Minima = np.where(condition_Minima)[0]
+        Minima = []
+        for i in indices_Minima:
+            x1 = x[i]
+            x2 = x[i+1]
+            y1 = dy_dx[i]
+            y2 = dy_dx[i+1]
+            a = (y1-y2)/(x1-x2)
+            b = y1 - a*x1
+            x0 = -b/a
+            Minima.append(x0)
         
+        # fig,ax=plt.subplots(2,1)
+        # ax[0].plot(t,ta)
+        # # ax[0].plot(t_int,y_int)
+        # ax[1].plot(t,dy_dx)  
+        # ax[1].plot(Maxima,np.array([0]*len(Maxima)),'x')
+        # ax[1].plot(Minima,np.array([0]*len(Minima)),'x')
+        # # ax[1].plot(Extrema,np.array([0]*len(Extrema)),'x')
+        # # ax[1].plot(t_int, 0.001*np.sin(2*np.pi*(t_int+6)/11.4))
+        # # ax[0].set_xlim([45,65])
+        # ax[1].set_ylim([-0.07,0.07])
+        # # ax[1].set_xlim([45,65])
+        # ax[1].axhline(color='k')
+        
+        return np.asarray(Maxima),np.asarray(Minima)
+    
+    Maxima,Minima = get_extrema(x,y)
+    Extrema = np.sort(np.concat((Maxima,Minima))) 
+
     def get_period(extrema):
         grad = np.diff(extrema)     
-
-        
         kde = gaussian_kde(grad)
-        
         T = np.linspace(min(grad),max(grad),1000)
         
         # fig,ax = plt.subplots()
@@ -136,19 +136,8 @@ def get_Extrema(x,y):
     period = get_period(Extrema) 
     
     def get_Phase(Maxima,period):
-        
-        def objective(phi):
-            mod = Maxima%period
-            for n,i in enumerate(mod):
-                i = i - period/4
-                if i>0.5*period:
-                    mod[n] = period - i
-                else:
-                    mod[n] = i
             
-            return mod
-            
-        mod = objective(0)
+        mod = Maxima%period
         
         kde = gaussian_kde(mod)
         x = np.linspace(min(mod),max(mod),1000)
@@ -171,36 +160,18 @@ def get_Extrema(x,y):
     
     return period, phase
 
-
 cut_early = 0
 t = FA.t[cut_early:]
 wl = FA.wl
 TA = FA.exp_data[:,cut_early:]
 
-
 Period = np.zeros(TA.shape[0])
 Phase = np.zeros(TA.shape[0])
 for n,i in enumerate(wl):
-    Period[n],Phase[n] = get_Extrema(t,TA[n,:])
+    Period[n],Phase[n] = Oscillation_Estimate(t,TA[n,:])
     
-
-
-
-
-
 fig,ax = plt.subplots(2,1)
 ax[0].axhline(0,color='k')
 ax[0].plot(wl,2*np.pi/Period)
 ax[1].plot(wl,Phase)
-
 ax[0].set_ylim((0,2))
-
-
-
-
-
-
-
-
-
-
