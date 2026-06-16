@@ -19,14 +19,6 @@ from scipy.optimize import curve_fit, minimize
  
 import time
 
-start = time.perf_counter()
-end = time.perf_counter()
-
-print(f"Elapsed time: {end - start:.2f} seconds")
-
-
-
-
 
 
 class FrequencyAnalysis:
@@ -68,13 +60,17 @@ FA = FrequencyAnalysis()
 # t = np.linspace(min(t),max(t),5000)
 # ta = 0.2*np.sin((2*np.pi*t/Period)-Phase_Shift)
 
-def Oscillation_Estimate(x,y):
+def Oscillation_Estimate(x,y,x0=0,filter_strength=1,ID='Unknown'):
+    
+    y = y[np.argmax(x>x0):]
+    x = x[np.argmax(x>x0):]
+    
+    dy_dx = np.gradient(y,x) 
 
     def get_extrema(x,y):
         """
         """    
-        dy_dx = np.gradient(y,x) 
-        
+
         condition_Maxima = (dy_dx[:-1] > 0) & (dy_dx[1:] < 0)
         # Get indices where the condition is True
         indices_Maxima = np.where(condition_Maxima)[0]
@@ -103,19 +99,6 @@ def Oscillation_Estimate(x,y):
             x0 = -b/a
             Minima.append(x0)
         
-        # fig,ax=plt.subplots(2,1)
-        # ax[0].plot(t,ta)
-        # # ax[0].plot(t_int,y_int)
-        # ax[1].plot(t,dy_dx)  
-        # ax[1].plot(Maxima,np.array([0]*len(Maxima)),'x')
-        # ax[1].plot(Minima,np.array([0]*len(Minima)),'x')
-        # # ax[1].plot(Extrema,np.array([0]*len(Extrema)),'x')
-        # # ax[1].plot(t_int, 0.001*np.sin(2*np.pi*(t_int+6)/11.4))
-        # # ax[0].set_xlim([45,65])
-        # ax[1].set_ylim([-0.07,0.07])
-        # # ax[1].set_xlim([45,65])
-        # ax[1].axhline(color='k')
-        
         return np.asarray(Maxima),np.asarray(Minima)
     
     Maxima,Minima = get_extrema(x,y)
@@ -129,13 +112,33 @@ def Oscillation_Estimate(x,y):
         # fig,ax = plt.subplots()
         # ax.plot(T,kde(T))
         # ax.plot(grad,[0.08]*len(grad),'x')
+        # ax.axvline(x=T_limit_low,color='red',linewidth=1.5)
+        # # ax.set_xlim(0,10)
+        
+        #Apply limits
+        #define limits with available x datapoints
+        T_limit_low = 4*filter_strength*min(np.diff(x))
+        T_limit_high = abs(x[-1]-x[0])/2 #at least two periods in dataset
+        T_limit_low_index = np.argmax(T>T_limit_low)
+        T_limit_high_index = np.argmax(T>T_limit_high)
+        if T_limit_high_index==0:
+            T_limit_high_index = None
+        
+        T = T[T_limit_low_index:T_limit_high_index]
+        
+        Estimated_Period = 2*T[np.argmax(kde(T))] 
         
         # print(f'Estimated Period: {2*T[np.argmax(kde(T))]}')
-        return 2*T[np.argmax(kde(T))] 
+        
+        if T_limit_low>Estimated_Period:
+            print('ERROR')
+            exit
+            
+        return Estimated_Period
     
     period = get_period(Extrema) 
     
-    def get_Phase(Maxima,period):
+    def get_Phase(Maxima,Minima,period):
             
         mod = Maxima%period
         
@@ -146,7 +149,7 @@ def Oscillation_Estimate(x,y):
         # ax.scatter(mod,[0]*len(Maxima))
         # ax.plot(x,kde(x))
         
-        phase_shift = 2*np.pi*x[np.argmax(kde(x))]/period
+        phase_shift = 2*np.pi*x[np.argmax(kde(x))]/period+np.pi/2
         
         # print(f'''
 # Estimates for
@@ -156,22 +159,69 @@ def Oscillation_Estimate(x,y):
         
         return phase_shift 
         
-    phase = get_Phase(Maxima,period)
+    phase = get_Phase(Maxima,Minima,period)
+        
+
+    def fit_fun(x,A,T,phi):
+        return A*np.sin(2*np.pi*x/T+phi)
+    
+    try:
+        parms,cov = curve_fit(fit_fun,x,dy_dx,p0=(1,period,phase))    
+        _,period,phase = parms
+    except:
+        print(f'failed to fit {ID}')
+
+    
+    # fig,ax=plt.subplots(2,1)
+    # ax[0].plot(x,y)
+    # ax[1].plot(x,dy_dx)  
+    # ax[1].plot(Maxima,np.array([0]*len(Maxima)),'x')
+    # ax[1].plot(Minima,np.array([0]*len(Minima)),'x')
+    # # ax[1].plot(Extrema,np.array([0]*len(Extrema)),'x')
+    # ax[1].plot(x, fit_fun(x,*parms),':')
+    # # ax[0].set_xlim([45,65])
+    # ax[1].set_ylim([-0.07,0.07])
+    # # ax[1].set_xlim([45,65])
+    # ax[1].axhline(color='k')
+
     
     return period, phase
 
-cut_early = 0
-t = FA.t[cut_early:]
+t = FA.t
 wl = FA.wl
-TA = FA.exp_data[:,cut_early:]
+TA = FA.exp_data
+
+wl1 = 450
+wl2 = 450.5
+
+# TA = TA[np.argmax(wl>wl1):np.argmax(wl>wl2),:]
+# wl = wl[np.argmax(wl>wl1):np.argmax(wl>wl2)]
 
 Period = np.zeros(TA.shape[0])
 Phase = np.zeros(TA.shape[0])
+
+#%
+
+start = time.perf_counter()
+
 for n,i in enumerate(wl):
-    Period[n],Phase[n] = Oscillation_Estimate(t,TA[n,:])
-    
+    Period[n],Phase[n] = Oscillation_Estimate(t,TA[n,:],filter_strength=0.0001,ID=str(i))
+
+end = time.perf_counter()
+
+print(f"Elapsed time: {end - start:.2f} seconds")
+
+
 fig,ax = plt.subplots(2,1)
 ax[0].axhline(0,color='k')
 ax[0].plot(wl,2*np.pi/Period)
+# ax[0].plot(wl,Period)
 ax[1].plot(wl,Phase)
 ax[0].set_ylim((0,2))
+
+
+#%%
+
+fig,ax=plt.subplots()
+cs = ax.contourf(wl,t,TA.T,levels=30)
+fig.colorbar(cs)
