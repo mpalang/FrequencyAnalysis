@@ -26,3 +26,7 @@ def kde(data,bandwidth=0.1,kernel='gaussian'):
     kde = kde/max(kde)
 
     return x,kde
+
+def kde_argmax(data,bandwidth=0.1,kernel='gaussian'):
+    x,y = kde(data,bandwidth=0.1,kernel='gaussian')
+    return x[np.argmax(y)]
